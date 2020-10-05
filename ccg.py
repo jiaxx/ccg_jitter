@@ -23,44 +23,26 @@ def nextpow2(n):
     return 2**m_i
 
 
-def get_ccgjitter(spikes, FR, jitterwindow=25):
-    # spikes: neuron*ori*trial*time
-    # currently, time need to be devidible by jitterwindow
-    assert np.shape(spikes)[0]==len(FR)
+def get_ccgjitter(spikes1, spikes2, jitterwindow=25):
+    # spikes: trial*time
 
-    n_unit=np.shape(spikes)[0]
-    n_t = np.shape(spikes)[3]
+    n_t = np.shape(spikes)[-1]
     # triangle function
     t = np.arange(-(n_t-1),(n_t-1))
     theta = n_t-np.abs(t)
     del t
     NFFT = int(nextpow2(2*n_t))
-    target = np.array([int(i) for i in NFFT/2+np.arange((-n_t+2),n_t)])
 
-    ccgjitter = []
-    pair=0
-    for i in np.arange(n_unit-1): # V1 cell
-        for m in np.arange(i+1,n_unit):  # V2 cell
-            # temp format: [rep, (ori), time], *time has to be the last dim
-            if FR[i]>2 and FR[m]>2:
-                # temp format: [rep, (ori), time], *time has to be the last dim
-                # input shape is neuron*ori*rep*time
-                temp1 = np.squeeze(spikes[i,:,:,:])
-                temp2 = np.squeeze(spikes[m,:,:,:])
-                FR1 = np.squeeze(np.mean(np.sum(temp1,axis=2), axis=1))
-                FR2 = np.squeeze(np.mean(np.sum(temp2,axis=2), axis=1))
-                tempccg = xcorrfft(temp1,temp2,NFFT)
+    FR1 = np.squeeze(np.mean(np.sum(spikes1,axis=1), axis=0))
+    FR2 = np.squeeze(np.mean(np.sum(spikes2,axis=1), axis=0))
+    tempccg = xcorrfft(spikes1,spikes2,NFFT)
 
-                # input shape is time*neuron*ori*rep
-                temp1 = np.rollaxis(np.rollaxis(temp1,2,0), 2,1)
-                temp2 = np.rollaxis(np.rollaxis(temp2,2,0), 2,1)
-                ttemp1 = jitter(temp1,jitterwindow);  
-                ttemp2 = jitter(temp2,jitterwindow);
-                tempjitter = xcorrfft(np.rollaxis(np.rollaxis(ttemp1,2,0), 2,1),np.rollaxis(np.rollaxis(ttemp2,2,0), 2,1),NFFT);  
-                tempjitter = np.squeeze(np.nanmean(tempjitter[:,:,target],axis=1))
-                ccgjitter.append((tempccg - tempjitter).T/np.multiply(np.tile(np.sqrt(FR[i]*FR[m]), (len(target), 1)), 
-                    np.tile(theta.T.reshape(len(theta),1),(1,len(FR1)))))
+    temp1 = jitter(spikes1,jitterwindow);  
+    temp2 = jitter(spikes2,jitterwindow);
+    tempjitter = xcorrfft(temp1, temp2, NFFT)
 
-    ccgjitter = np.array(ccgjitter)
+    # normalize by rate and triangle function
+    ccgjitter = (tempccg - tempjitter).T/np.multiply(np.sqrt(FR1*FR2), np.tile(theta.T.reshape(len(theta),1),(1,len(FR1))))
+
     return ccgjitter
 
